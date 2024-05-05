@@ -1,0 +1,907 @@
+---
+title: "BA.1_Omicron"
+author: "Alejandra Galván Bojórquez"
+date: "2024-05-02"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## OMICRON BA.1
+
+# México
+
+```{r}
+library(seqinr)
+#Leemos la secuencia de referencia
+fRef = read.fasta("sequence_ref.txt")
+str(fRef)
+
+#Leemos la secuencia mexicana
+fMexa = read.fasta("Omicron_1_Mexico.fasta")
+str(fMexa)
+
+#Creamos nuestro data frame
+df = data.frame (Mutation = character(), 
+                 CambioCodon = character(), 
+                 CambioAmino = character(),
+                 Gen = character()
+)
+str(df)
+
+#Identificamos el tipo de aminoacido
+translate = function(input){
+  tipo_aminoacido = switch(input, UUU = "F", UUC = "F", UUA = "L", UUG = "L",
+                           UCU = "S", UCC = "S", UCA = "S", UCG = "S" , 
+                           UAU = "Y", UAC = "Y", UAA = "STOP", UAG = "STOP", UGU = "C", UGC = "C", 
+                           UGA = "STOP", UGG = "W", CUU = "L", CUC = "L", 
+                           CUA = "L", CUG = "L", CCU = "P", CCC = "P", 
+                           CCA = "P", CCG = "P", CAU = "H", CAC = "H",
+                           CAA = "Q", CAG = "Q", CGU = "R", CGC = "R",
+                           CGA = "R", CGG = "R", AUU = "I", AUC = "I",
+                           AUA = "I", AUG = "MET", ACU = "T", ACC = "T",
+                           ACA = "T", ACG = "T", AAU = "N", AAC = "N", 
+                           AAA = "K", AAG = "K", AGU = "S", AGC = "S",
+                           AGA = "R", AGG = "R", GUU = "V", GUC = "V",
+                           GUA = "V", GUG = "V", GCU = "A", GCC = "A",
+                           GCA = "A", GCG = "A", GAU = "D", GAC = "D",
+                           GAA = "E", GAG = "E", GGU = "G" , GGC = "G", 
+                           GGA = "G" , GGG = "G")
+  return(tipo_aminoacido)
+}
+
+
+#Transforma la cadena de ADN en ARN
+ToARN = function(input){
+  newARN = as.vector(input)
+  newARN[which(newARN == "t")] = "u"
+  newARN = toupper(newARN) #Convierte el texto a mayusculas
+  return(newARN)
+}
+
+crearCodon = function(gen, inicioCodon){
+  codon = paste(gen[inicioCodon], gen[inicioCodon+1], gen[inicioCodon+2], sep="")
+  return(codon)
+}
+
+row = 1 
+index =1 
+
+dif2 =""
+
+num_secuencias = length(fMexa)/12
+
+for (j in seq(1,num_secuencias,1)){
+  for (i in seq(1,length(fRef),1)){
+    anotaciones = attr(fRef[[i]], "Annot")
+    atributos = unlist(strsplit(anotaciones, " "))
+    genNombre = unlist(strsplit(atributos[[2]],"=")) #Accede a la posicion del tipo del gen
+    genRef = ToARN(fRef[[i]]) 
+    for (k in seq(1, length(fRef),12)){
+      anotaciones2 = attr(fMexa[index], "name")
+      genMex = ToARN(fMexa[[index]])
+      if (length(genRef) == length(genMex)){
+        dif1 = which(genRef != genMex) #Almacenamos las posiciones donde estos genes son diferentes
+        comparaPosiciones = which(dif1 %in% dif2) 
+        dif2=dif1
+        if( length(comparaPosiciones) == 0) { #Verificamos no caer en posiciones a las que previamente accedimos
+          if (length(dif1) > 0) {
+            for (x in dif1){
+              mutar = paste(genRef[x],"to",genMex[x], sep="")
+              inicioCodon = x-(x-1) %%3
+              numCodon = as.integer((x-1)/3+1)
+              codonOri = crearCodon(genRef, inicioCodon)
+              codonMex = crearCodon(genMex, inicioCodon)
+              codonChange = paste(codonOri, "to", codonMex, sep="")
+              aminoChange = paste (translate(codonOri), numCodon, translate(codonMex), sep="")
+              genTipo = as.character( strsplit(genNombre[[2]],"]") )
+              if(genTipo == "S"){
+                if(!is.na(translate(codonMex)) && length(translate(codonMex))!=0){
+                  mutacion = list(mutar, codonChange, aminoChange, genTipo)
+                  df[row, ] = mutacion
+                  row=row+1
+                  
+                }
+              }
+            }
+          }
+        }
+        
+      }else{
+        cat("Mutacion no encontrada")
+      }
+      index=index+1
+    }
+  }
+  cat("Secuencia ", j, " completa","\n")
+}
+
+options(max.print = 1000000)
+
+df
+str(df)
+
+if (length(df) >4){
+  data = df 
+  
+  library(dplyr)
+  data = filter(
+    dplyr::summarize(
+      select(
+        group_by(data,Mutation),
+        Mutation:Gen
+      ),
+      Mutation = first(Mutation),
+      CambioCodon = first(CambioCodon),
+      Gen = first(Gen),
+      Conteo = n()
+    ),
+    Conteo>=1
+  )
+  
+  #Realizamos un segundo filtro para solo enfocarnos en aquellas mutaciones con una frecuencia arriba del 25%
+  #data = filter(data, Conteo > 50*0.25)
+  
+  #Graficas con mutaciones del nucleotido
+  library(ggplot2)
+  barrasA = ggplot(data)
+  barrasA = barrasA + aes(x = Mutation, y=Conteo, fill = Mutation, label = Conteo)
+  barrasA = barrasA + ggtitle("Mutaciones de nucleótido México")
+  barrasA = barrasA + labs(x="Mutation", y="Count", fill="Count")
+  barrasA = barrasA + geom_bar (stat = "identity")
+  barrasA = barrasA + geom_text (stat = "identity", vjust=0)
+  barrasA = barrasA + facet_grid (~Gen)
+  barrasA
+  
+  library(dplyr)
+  dfgraph = filter(
+    dplyr::summarize(
+      select(
+        group_by(df,CambioAmino),
+        Mutation:Gen
+      ),
+      Mutation = first(Mutation),
+      CambioCodon = first(CambioCodon),
+      Gen = first(Gen),
+      Cuenta = n()
+    ),
+    Cuenta>=1
+  )
+  
+  dfgraph
+  
+  #Realizamos un segundo filtro para solo enfocarnos en aquellos aminoacidos que tengan una frecuencia arriba del 60%
+  #dfgraph = filter(dfgraph, Cuenta > max(Cuenta)*0.6)
+  
+  #Graficas con cambios de aminoacidos
+  barrasB = ggplot(dfgraph)
+  barrasB = barrasB + aes(x=CambioAmino, y=Cuenta, fill=CambioAmino, label=Cuenta)
+  barrasB = barrasB + ggtitle("Cambio de Aminoácidos México")
+  barrasB = barrasB + labs(x="Amino", y="Frecuencia", fill="Frecuencia")
+  barrasB = barrasB + geom_bar(stat = "identity")
+  barrasB = barrasB + geom_text(stat = "identity", vjust=1.5) 
+  barrasB = barrasB + facet_wrap (~Gen)
+  barrasB
+  
+}
+```
+
+# Francia
+
+
+```{r}
+#TAREA 05: MUTACIONES SECUENCIA DE REFERENCIA VS. TOTAL DE SECUENCIAS DE LA VARIANTE 
+#Alejandra Galvan Bojorquez (A01424388)
+
+library(seqinr)
+#Leemos la secuencia de referencia
+fRef = read.fasta("sequence_ref.txt")
+str(fRef)
+
+#Leemos la secuencia mexicana
+fFrance = read.fasta("Omicron_1_France.fasta")
+str(fFrance)
+
+#Creamos nuestro data frame
+df = data.frame (Mutation = character(), 
+                 CambioCodon = character(), 
+                 CambioAmino = character(),
+                 Gen = character()
+)
+str(df)
+
+#Identificamos el tipo de aminoacido
+translate = function(input){
+  tipo_aminoacido = switch(input, UUU = "F", UUC = "F", UUA = "L", UUG = "L",
+                           UCU = "S", UCC = "S", UCA = "S", UCG = "S" , 
+                           UAU = "Y", UAC = "Y", UAA = "STOP", UAG = "STOP", UGU = "C", UGC = "C", 
+                           UGA = "STOP", UGG = "W", CUU = "L", CUC = "L", 
+                           CUA = "L", CUG = "L", CCU = "P", CCC = "P", 
+                           CCA = "P", CCG = "P", CAU = "H", CAC = "H",
+                           CAA = "Q", CAG = "Q", CGU = "R", CGC = "R",
+                           CGA = "R", CGG = "R", AUU = "I", AUC = "I",
+                           AUA = "I", AUG = "MET", ACU = "T", ACC = "T",
+                           ACA = "T", ACG = "T", AAU = "N", AAC = "N", 
+                           AAA = "K", AAG = "K", AGU = "S", AGC = "S",
+                           AGA = "R", AGG = "R", GUU = "V", GUC = "V",
+                           GUA = "V", GUG = "V", GCU = "A", GCC = "A",
+                           GCA = "A", GCG = "A", GAU = "D", GAC = "D",
+                           GAA = "E", GAG = "E", GGU = "G" , GGC = "G", 
+                           GGA = "G" , GGG = "G")
+  return(tipo_aminoacido)
+}
+
+
+#Transforma la cadena de ADN en ARN
+ToARN = function(input){
+  newARN = as.vector(input)
+  newARN[which(newARN == "t")] = "u"
+  newARN = toupper(newARN) #Convierte el texto a mayusculas
+  return(newARN)
+}
+
+crearCodon = function(gen, inicioCodon){
+  codon = paste(gen[inicioCodon], gen[inicioCodon+1], gen[inicioCodon+2], sep="")
+  return(codon)
+}
+
+row = 1 
+index =1 
+
+dif2 =""
+
+num_secuencias = length(fFrance)/12
+
+for (j in seq(1,num_secuencias,1)){
+  for (i in seq(1,length(fRef),1)){
+    anotaciones = attr(fRef[[i]], "Annot")
+    atributos = unlist(strsplit(anotaciones, " "))
+    genNombre = unlist(strsplit(atributos[[2]],"=")) #Accede a la posicion del tipo del gen
+    genRef = ToARN(fRef[[i]]) 
+    for (k in seq(1, length(fRef),12)){
+      anotaciones2 = attr(fFrance[index], "name")
+      genFrance = ToARN(fFrance[[index]])
+      if (length(genRef) == length(genFrance)){
+        dif1 = which(genRef != genFrance) #Almacenamos las posiciones donde estos genes son diferentes
+        comparaPosiciones = which(dif1 %in% dif2) 
+        dif2=dif1
+        if( length(comparaPosiciones) == 0) { #Verificamos no caer en posiciones a las que previamente accedimos
+          if (length(dif1) > 0) {
+            for (x in dif1){
+              mutar = paste(genRef[x],"to",genFrance[x], sep="")
+              inicioCodon = x-(x-1) %%3
+              numCodon = as.integer((x-1)/3+1)
+              codonOri = crearCodon(genRef, inicioCodon)
+              codonFrance = crearCodon(genFrance, inicioCodon)
+              codonChange = paste(codonOri, "to", codonFrance, sep="")
+              aminoChange = paste (translate(codonOri), numCodon, translate(codonFrance), sep="")
+              genTipo = as.character( strsplit(genNombre[[2]],"]") )
+              if(genTipo == "S"){
+                if(!is.na(translate(codonFrance)) && length(translate(codonFrance))!=0){
+                  mutacion = list(mutar, codonChange, aminoChange, genTipo)
+                  df[row, ] = mutacion
+                  row=row+1
+                  
+                }
+              }
+            }
+          }
+        }
+        
+      }else{
+        cat("Mutacion no encontrada")
+      }
+      index=index+1
+    }
+  }
+  cat("Secuencia ", j, " completa","\n")
+}
+
+options(max.print = 1000000)
+
+df
+str(df)
+
+data = df 
+
+library(dplyr)
+data = filter(
+  dplyr::summarize(
+    select(
+      group_by(data,Mutation),
+      Mutation:Gen
+    ),
+    Mutation = first(Mutation),
+    CambioCodon = first(CambioCodon),
+    Gen = first(Gen),
+    Conteo = n()
+  ),
+  Conteo>=1
+)
+
+#Realizamos un segundo filtro para solo enfocarnos en aquellas mutaciones con una frecuencia arriba del 25%
+#data = filter(data, Conteo > 50*0.25)
+
+#Graficas con mutaciones del nucleotido
+library(ggplot2)
+barrasA = ggplot(data)
+barrasA = barrasA + aes(x = Mutation, y=Conteo, fill = Mutation, label = Conteo)
+barrasA = barrasA + ggtitle("Mutaciones de nucleótido Francia")
+barrasA = barrasA + labs(x="Mutation", y="Count", fill="Count")
+barrasA = barrasA + geom_bar (stat = "identity")
+barrasA = barrasA + geom_text (stat = "identity", vjust=0)
+barrasA = barrasA + facet_grid (~Gen)
+barrasA
+
+library(dplyr)
+dfgraph = filter(
+  dplyr::summarize(
+    select(
+      group_by(df,CambioAmino),
+      Mutation:Gen
+    ),
+    Mutation = first(Mutation),
+    CambioCodon = first(CambioCodon),
+    Gen = first(Gen),
+    Cuenta = n()
+  ),
+  Cuenta>=1
+)
+
+dfgraph
+
+#Realizamos un segundo filtro para solo enfocarnos en aquellos aminoacidos que tengan una frecuencia arriba del 60%
+
+#Graficas con cambios de aminoacidos
+barrasB = ggplot(dfgraph)
+barrasB = barrasB + aes(x=CambioAmino, y=Cuenta, fill=CambioAmino, label=Cuenta)
+barrasB = barrasB + ggtitle("Cambio de Aminoácidos Francia")
+barrasB = barrasB + labs(x="Amino", y="Frecuencia", fill="Frecuencia")
+barrasB = barrasB + geom_bar(stat = "identity")
+barrasB = barrasB + geom_text(stat = "identity", vjust=1.5) 
+barrasB = barrasB + facet_wrap (~Gen)
+barrasB
+
+```
+
+# India
+
+```{r}
+#TAREA 05: MUTACIONES SECUENCIA DE REFERENCIA VS. TOTAL DE SECUENCIAS DE LA VARIANTE 
+#Alejandra Galvan Bojorquez (A01424388)
+
+library(seqinr)
+#Leemos la secuencia de referencia
+fRef = read.fasta("sequence_ref.txt")
+str(fRef)
+
+#Leemos la secuencia mexicana
+fIndia = read.fasta("Omicron_1_India.fasta")
+str(fIndia)
+
+#Creamos nuestro data frame
+df = data.frame (Mutation = character(), 
+                 CambioCodon = character(), 
+                 CambioAmino = character(),
+                 Gen = character()
+)
+str(df)
+
+#Identificamos el tipo de aminoacido
+translate = function(input){
+  tipo_aminoacido = switch(input, UUU = "F", UUC = "F", UUA = "L", UUG = "L",
+                           UCU = "S", UCC = "S", UCA = "S", UCG = "S" , 
+                           UAU = "Y", UAC = "Y", UAA = "STOP", UAG = "STOP", UGU = "C", UGC = "C", 
+                           UGA = "STOP", UGG = "W", CUU = "L", CUC = "L", 
+                           CUA = "L", CUG = "L", CCU = "P", CCC = "P", 
+                           CCA = "P", CCG = "P", CAU = "H", CAC = "H",
+                           CAA = "Q", CAG = "Q", CGU = "R", CGC = "R",
+                           CGA = "R", CGG = "R", AUU = "I", AUC = "I",
+                           AUA = "I", AUG = "MET", ACU = "T", ACC = "T",
+                           ACA = "T", ACG = "T", AAU = "N", AAC = "N", 
+                           AAA = "K", AAG = "K", AGU = "S", AGC = "S",
+                           AGA = "R", AGG = "R", GUU = "V", GUC = "V",
+                           GUA = "V", GUG = "V", GCU = "A", GCC = "A",
+                           GCA = "A", GCG = "A", GAU = "D", GAC = "D",
+                           GAA = "E", GAG = "E", GGU = "G" , GGC = "G", 
+                           GGA = "G" , GGG = "G")
+  return(tipo_aminoacido)
+}
+
+
+#Transforma la cadena de ADN en ARN
+ToARN = function(input){
+  newARN = as.vector(input)
+  newARN[which(newARN == "t")] = "u"
+  newARN = toupper(newARN) #Convierte el texto a mayusculas
+  return(newARN)
+}
+
+crearCodon = function(gen, inicioCodon){
+  codon = paste(gen[inicioCodon], gen[inicioCodon+1], gen[inicioCodon+2], sep="")
+  return(codon)
+}
+
+row = 1 
+index =1 
+
+dif2 =""
+
+num_secuencias = length(fIndia)/12
+
+for (j in seq(1,num_secuencias,1)){
+  for (i in seq(1,length(fRef),1)){
+    anotaciones = attr(fRef[[i]], "Annot")
+    atributos = unlist(strsplit(anotaciones, " "))
+    genNombre = unlist(strsplit(atributos[[2]],"=")) #Accede a la posicion del tipo del gen
+    genRef = ToARN(fRef[[i]]) 
+    for (k in seq(1, length(fRef),12)){
+      anotaciones2 = attr(fIndia[index], "name")
+      genIndia = ToARN(fIndia[[index]])
+      if (length(genRef) == length(genIndia)){
+        dif1 = which(genRef != genIndia) #Almacenamos las posiciones donde estos genes son diferentes
+        comparaPosiciones = which(dif1 %in% dif2) 
+        dif2=dif1
+        if( length(comparaPosiciones) == 0) { #Verificamos no caer en posiciones a las que previamente accedimos
+          if (length(dif1) > 0) {
+            for (x in dif1){
+              mutar = paste(genRef[x],"to",genIndia[x], sep="")
+              inicioCodon = x-(x-1) %%3
+              numCodon = as.integer((x-1)/3+1)
+              codonOri = crearCodon(genRef, inicioCodon)
+              codonIndia = crearCodon(genIndia, inicioCodon)
+              codonChange = paste(codonOri, "to", codonIndia, sep="")
+              aminoChange = paste (translate(codonOri), numCodon, translate(codonIndia), sep="")
+              genTipo = as.character( strsplit(genNombre[[2]],"]") )
+              if (genTipo == "S"){
+                if(!is.na(translate(codonIndia)) && length(translate(codonIndia))!=0){
+                  mutacion = list(mutar, codonChange, aminoChange, genTipo)
+                  df[row, ] = mutacion
+                  row=row+1
+                  
+                }
+              }
+            }
+          }
+        }
+        
+      }else{
+        cat("Mutacion no encontrada")
+      }
+      index=index+1
+    }
+  }
+  cat("Secuencia ", j, " completa","\n")
+}
+
+options(max.print = 1000000)
+
+df
+str(df)
+
+data = df 
+
+library(dplyr)
+data = filter(
+  dplyr::summarize(
+    select(
+      group_by(data,Mutation),
+      Mutation:Gen
+    ),
+    Mutation = first(Mutation),
+    CambioCodon = first(CambioCodon),
+    Gen = first(Gen),
+    Conteo = n()
+  ),
+  Conteo>=1
+)
+
+#Realizamos un segundo filtro para solo enfocarnos en aquellas mutaciones con una frecuencia arriba del 25%
+data = filter(data, Conteo > 50*0.25)
+
+#Graficas con mutaciones del nucleotido
+library(ggplot2)
+barrasA = ggplot(data)
+barrasA = barrasA + aes(x = Mutation, y=Conteo, fill = Mutation, label = Conteo)
+barrasA = barrasA + ggtitle("Mutaciones de nucleótido India")
+barrasA = barrasA + labs(x="Mutation", y="Count", fill="Count")
+barrasA = barrasA + geom_bar (stat = "identity")
+barrasA = barrasA + geom_text (stat = "identity", vjust=0)
+barrasA = barrasA + facet_grid (~Gen)
+barrasA
+
+library(dplyr)
+dfgraph = filter(
+  dplyr::summarize(
+    select(
+      group_by(df,CambioAmino),
+      Mutation:Gen
+    ),
+    Mutation = first(Mutation),
+    CambioCodon = first(CambioCodon),
+    Gen = first(Gen),
+    Cuenta = n()
+  ),
+  Cuenta>=1
+)
+
+dfgraph
+
+#Realizamos un segundo filtro para solo enfocarnos en aquellos aminoacidos que tengan una frecuencia arriba del 60%
+dfgraph = filter(dfgraph, Cuenta > max(Cuenta)*0.6)
+
+#Graficas con cambios de aminoacidos
+barrasB = ggplot(dfgraph)
+barrasB = barrasB + aes(x=CambioAmino, y=Cuenta, fill=CambioAmino, label=Cuenta)
+barrasB = barrasB + ggtitle("Cambio de Aminoácidos India")
+barrasB = barrasB + labs(x="Amino", y="Frecuencia", fill="Frecuencia")
+barrasB = barrasB + geom_bar(stat = "identity")
+barrasB = barrasB + geom_text(stat = "identity", vjust=1.5) 
+barrasB = barrasB + facet_wrap (~Gen)
+barrasB
+
+
+
+```
+
+# Sudafrica
+
+```{r}
+#TAREA 05: MUTACIONES SECUENCIA DE REFERENCIA VS. TOTAL DE SECUENCIAS DE LA VARIANTE 
+#Alejandra Galvan Bojorquez (A01424388)
+
+library(seqinr)
+#Leemos la secuencia de referencia
+fRef = read.fasta("sequence_ref.txt")
+str(fRef)
+
+#Leemos la secuencia mexicana
+fSA = read.fasta("Omicron_1_SouthAfrica.fasta")
+str(fSA)
+
+#Creamos nuestro data frame
+df = data.frame (Mutation = character(), 
+                 CambioCodon = character(), 
+                 CambioAmino = character(),
+                 Gen = character()
+)
+str(df)
+
+#Identificamos el tipo de aminoacido
+translate = function(input){
+  tipo_aminoacido = switch(input, UUU = "F", UUC = "F", UUA = "L", UUG = "L",
+                           UCU = "S", UCC = "S", UCA = "S", UCG = "S" , 
+                           UAU = "Y", UAC = "Y", UAA = "STOP", UAG = "STOP", UGU = "C", UGC = "C", 
+                           UGA = "STOP", UGG = "W", CUU = "L", CUC = "L", 
+                           CUA = "L", CUG = "L", CCU = "P", CCC = "P", 
+                           CCA = "P", CCG = "P", CAU = "H", CAC = "H",
+                           CAA = "Q", CAG = "Q", CGU = "R", CGC = "R",
+                           CGA = "R", CGG = "R", AUU = "I", AUC = "I",
+                           AUA = "I", AUG = "MET", ACU = "T", ACC = "T",
+                           ACA = "T", ACG = "T", AAU = "N", AAC = "N", 
+                           AAA = "K", AAG = "K", AGU = "S", AGC = "S",
+                           AGA = "R", AGG = "R", GUU = "V", GUC = "V",
+                           GUA = "V", GUG = "V", GCU = "A", GCC = "A",
+                           GCA = "A", GCG = "A", GAU = "D", GAC = "D",
+                           GAA = "E", GAG = "E", GGU = "G" , GGC = "G", 
+                           GGA = "G" , GGG = "G")
+  return(tipo_aminoacido)
+}
+
+
+#Transforma la cadena de ADN en ARN
+ToARN = function(input){
+  newARN = as.vector(input)
+  newARN[which(newARN == "t")] = "u"
+  newARN = toupper(newARN) #Convierte el texto a mayusculas
+  return(newARN)
+}
+
+crearCodon = function(gen, inicioCodon){
+  codon = paste(gen[inicioCodon], gen[inicioCodon+1], gen[inicioCodon+2], sep="")
+  return(codon)
+}
+
+row = 1 
+index =1 
+
+dif2 =""
+
+num_secuencias = length(fSA )/12
+
+for (j in seq(1,num_secuencias,1)){
+  for (i in seq(1,length(fRef),1)){
+    anotaciones = attr(fRef[[i]], "Annot")
+    atributos = unlist(strsplit(anotaciones, " "))
+    genNombre = unlist(strsplit(atributos[[2]],"=")) #Accede a la posicion del tipo del gen
+    genRef = ToARN(fRef[[i]]) 
+    for (k in seq(1, length(fRef),12)){
+      anotaciones2 = attr(fSA [index], "name")
+      genSA = ToARN(fSA [[index]])
+      if (length(genRef) == length(genSA)){
+        dif1 = which(genRef != genSA) #Almacenamos las posiciones donde estos genes son diferentes
+        comparaPosiciones = which(dif1 %in% dif2) 
+        dif2=dif1
+        if( length(comparaPosiciones) == 0) { #Verificamos no caer en posiciones a las que previamente accedimos
+          if (length(dif1) > 0) {
+            for (x in dif1){
+              mutar = paste(genRef[x],"to",genSA[x], sep="")
+              inicioCodon = x-(x-1) %%3
+              numCodon = as.integer((x-1)/3+1)
+              codonOri = crearCodon(genRef, inicioCodon)
+              codonSA = crearCodon(genSA, inicioCodon)
+              codonChange = paste(codonOri, "to", codonSA, sep="")
+              aminoChange = paste (translate(codonOri), numCodon, translate(codonSA), sep="")
+              genTipo = as.character( strsplit(genNombre[[2]],"]") )
+              if(genTipo == "S"){
+                if(!is.na(translate(codonSA)) && length(translate(codonSA))!=0){
+                  mutacion = list(mutar, codonChange, aminoChange, genTipo)
+                  df[row, ] = mutacion
+                  row=row+1
+                  
+                }
+              }
+            }
+          }
+        }
+        
+      }else{
+        cat("Mutacion no encontrada")
+      }
+      index=index+1
+    }
+  }
+  cat("Secuencia ", j, " completa","\n")
+}
+
+options(max.print = 1000000)
+
+df
+str(df)
+
+if (length(df) >4){
+  data = df 
+  
+  library(dplyr)
+  data = filter(
+    dplyr::summarize(
+      select(
+        group_by(data,Mutation),
+        Mutation:Gen
+      ),
+      Mutation = first(Mutation),
+      CambioCodon = first(CambioCodon),
+      Gen = first(Gen),
+      Conteo = n()
+    ),
+    Conteo>=1
+  )
+  
+  #Realizamos un segundo filtro para solo enfocarnos en aquellas mutaciones con una frecuencia arriba del 25%
+  data = filter(data, Conteo > 50*0.25)
+  
+  #Graficas con mutaciones del nucleotido
+  library(ggplot2)
+  barrasA = ggplot(data)
+  barrasA = barrasA + aes(x = Mutation, y=Conteo, fill = Mutation, label = Conteo)
+  barrasA = barrasA + ggtitle("Mutaciones de nucleótido Sudafrica")
+  barrasA = barrasA + labs(x="Mutation", y="Count", fill="Count")
+  barrasA = barrasA + geom_bar (stat = "identity")
+  barrasA = barrasA + geom_text (stat = "identity", vjust=0)
+  barrasA = barrasA + facet_grid (~Gen)
+  barrasA
+  
+  library(dplyr)
+  dfgraph = filter(
+    dplyr::summarize(
+      select(
+        group_by(df,CambioAmino),
+        Mutation:Gen
+      ),
+      Mutation = first(Mutation),
+      CambioCodon = first(CambioCodon),
+      Gen = first(Gen),
+      Cuenta = n()
+    ),
+    Cuenta>=1
+  )
+  
+  dfgraph
+  
+  #Realizamos un segundo filtro para solo enfocarnos en aquellos aminoacidos que tengan una frecuencia arriba del 60%
+  dfgraph = filter(dfgraph, Cuenta > max(Cuenta)*0.6)
+  
+  #Graficas con cambios de aminoacidos
+  barrasB = ggplot(dfgraph)
+  barrasB = barrasB + aes(x=CambioAmino, y=Cuenta, fill=CambioAmino, label=Cuenta)
+  barrasB = barrasB + ggtitle("Cambio de Aminoácidos Sudafrica")
+  barrasB = barrasB + labs(x="Amino", y="Frecuencia", fill="Frecuencia")
+  barrasB = barrasB + geom_bar(stat = "identity")
+  barrasB = barrasB + geom_text(stat = "identity", vjust=1.5) 
+  barrasB = barrasB + facet_wrap (~Gen)
+  barrasB
+
+}
+
+
+```
+
+# Estados Unidos
+
+```{r}
+#TAREA 05: MUTACIONES SECUENCIA DE REFERENCIA VS. TOTAL DE SECUENCIAS DE LA VARIANTE 
+#Alejandra Galvan Bojorquez (A01424388)
+
+library(seqinr)
+#Leemos la secuencia de referencia
+fRef = read.fasta("sequence_ref.txt")
+str(fRef)
+
+#Leemos la secuencia mexicana
+fUSA = read.fasta("Omicron_1_USA.fasta")
+str(fUSA)
+
+#Creamos nuestro data frame
+df = data.frame (Mutation = character(), 
+                 CambioCodon = character(), 
+                 CambioAmino = character(),
+                 Gen = character()
+)
+str(df)
+
+#Identificamos el tipo de aminoacido
+translate = function(input){
+  tipo_aminoacido = switch(input, UUU = "F", UUC = "F", UUA = "L", UUG = "L",
+                           UCU = "S", UCC = "S", UCA = "S", UCG = "S" , 
+                           UAU = "Y", UAC = "Y", UAA = "STOP", UAG = "STOP", UGU = "C", UGC = "C", 
+                           UGA = "STOP", UGG = "W", CUU = "L", CUC = "L", 
+                           CUA = "L", CUG = "L", CCU = "P", CCC = "P", 
+                           CCA = "P", CCG = "P", CAU = "H", CAC = "H",
+                           CAA = "Q", CAG = "Q", CGU = "R", CGC = "R",
+                           CGA = "R", CGG = "R", AUU = "I", AUC = "I",
+                           AUA = "I", AUG = "MET", ACU = "T", ACC = "T",
+                           ACA = "T", ACG = "T", AAU = "N", AAC = "N", 
+                           AAA = "K", AAG = "K", AGU = "S", AGC = "S",
+                           AGA = "R", AGG = "R", GUU = "V", GUC = "V",
+                           GUA = "V", GUG = "V", GCU = "A", GCC = "A",
+                           GCA = "A", GCG = "A", GAU = "D", GAC = "D",
+                           GAA = "E", GAG = "E", GGU = "G" , GGC = "G", 
+                           GGA = "G" , GGG = "G")
+  return(tipo_aminoacido)
+}
+
+
+#Transforma la cadena de ADN en ARN
+ToARN = function(input){
+  newARN = as.vector(input)
+  newARN[which(newARN == "t")] = "u"
+  newARN = toupper(newARN) #Convierte el texto a mayusculas
+  return(newARN)
+}
+
+crearCodon = function(gen, inicioCodon){
+  codon = paste(gen[inicioCodon], gen[inicioCodon+1], gen[inicioCodon+2], sep="")
+  return(codon)
+}
+
+row = 1 
+index =1 
+
+dif2 =""
+
+num_secuencias = length(fUSA)/12
+
+for (j in seq(1,num_secuencias,1)){
+  for (i in seq(1,length(fRef),1)){
+    anotaciones = attr(fRef[[i]], "Annot")
+    atributos = unlist(strsplit(anotaciones, " "))
+    genNombre = unlist(strsplit(atributos[[2]],"=")) #Accede a la posicion del tipo del gen
+    genRef = ToARN(fRef[[i]]) 
+    for (k in seq(1, length(fRef),12)){
+      anotaciones2 = attr(fUSA[index], "name")
+      genMex = ToARN(fUSA[[index]])
+      if (length(genRef) == length(genMex)){
+        dif1 = which(genRef != genMex) #Almacenamos las posiciones donde estos genes son diferentes
+        comparaPosiciones = which(dif1 %in% dif2) 
+        dif2=dif1
+        if( length(comparaPosiciones) == 0) { #Verificamos no caer en posiciones a las que previamente accedimos
+          if (length(dif1) > 0) {
+            for (x in dif1){
+              mutar = paste(genRef[x],"to",genMex[x], sep="")
+              inicioCodon = x-(x-1) %%3
+              numCodon = as.integer((x-1)/3+1)
+              codonOri = crearCodon(genRef, inicioCodon)
+              codonUSA = crearCodon(genMex, inicioCodon)
+              codonChange = paste(codonOri, "to", codonUSA, sep="")
+              aminoChange = paste (translate(codonOri), numCodon, translate(codonUSA), sep="")
+              genTipo = as.character( strsplit(genNombre[[2]],"]") )
+              if (genTipo == "S"){
+                if(!is.na(translate(codonUSA)) && length(translate(codonUSA))!=0){
+                  mutacion = list(mutar, codonChange, aminoChange, genTipo)
+                  df[row, ] = mutacion
+                  row=row+1
+                  
+                }
+              }
+            }
+          }
+        }
+        
+      }else{
+        cat("Mutacion no encontrada")
+      }
+      index=index+1
+    }
+  }
+  cat("Secuencia ", j, " completa","\n")
+}
+
+options(max.print = 1000000)
+
+df
+str(df)
+
+data = df 
+
+library(dplyr)
+data = filter(
+  dplyr::summarize(
+    select(
+      group_by(data,Mutation),
+      Mutation:Gen
+    ),
+    Mutation = first(Mutation),
+    CambioCodon = first(CambioCodon),
+    Gen = first(Gen),
+    Conteo = n()
+  ),
+  Conteo>=1
+)
+
+#Realizamos un segundo filtro para solo enfocarnos en aquellas mutaciones con una frecuencia arriba del 25%
+
+
+#Graficas con mutaciones del nucleotido
+library(ggplot2)
+barrasA = ggplot(data)
+barrasA = barrasA + aes(x = Mutation, y=Conteo, fill = Mutation, label = Conteo)
+barrasA = barrasA + ggtitle("Mutaciones de nucleótido USA")
+barrasA = barrasA + labs(x="Mutation", y="Count", fill="Count")
+barrasA = barrasA + geom_bar (stat = "identity")
+barrasA = barrasA + geom_text (stat = "identity", vjust=0)
+barrasA = barrasA + facet_grid (~Gen)
+barrasA
+
+library(dplyr)
+dfgraph = filter(
+  dplyr::summarize(
+    select(
+      group_by(df,CambioAmino),
+      Mutation:Gen
+    ),
+    Mutation = first(Mutation),
+    CambioCodon = first(CambioCodon),
+    Gen = first(Gen),
+    Cuenta = n()
+  ),
+  Cuenta>=1
+)
+
+dfgraph
+
+#Realizamos un segundo filtro para solo enfocarnos en aquellos aminoacidos que tengan una frecuencia arriba del 60%
+dfgraph = filter(dfgraph, Cuenta > max(Cuenta)*0.6)
+
+#Graficas con cambios de aminoacidos
+barrasB = ggplot(dfgraph)
+barrasB = barrasB + aes(x=CambioAmino, y=Cuenta, fill=CambioAmino, label=Cuenta)
+barrasB = barrasB + ggtitle("Cambio de Aminoácidos USA")
+barrasB = barrasB + labs(x="Amino", y="Frecuencia", fill="Frecuencia")
+barrasB = barrasB + geom_bar(stat = "identity")
+barrasB = barrasB + geom_text(stat = "identity", vjust=1.5) 
+barrasB = barrasB + facet_wrap (~Gen)
+barrasB
+
+```
