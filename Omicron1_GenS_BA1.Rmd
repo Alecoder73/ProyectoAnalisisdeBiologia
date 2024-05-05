@@ -98,7 +98,7 @@ for (j in seq(1,num_secuencias,1)){
               aminoChange = paste (translate(codonOri), numCodon, translate(codonMex), sep="")
               genTipo = as.character( strsplit(genNombre[[2]],"]") )
               
-              if(genTipo == "M"){
+              if(genTipo == "S"){
                 if(!is.na(translate(codonMex)) && length(translate(codonMex))!=0){
                   mutacion = list(mutar, codonChange, aminoChange, genTipo)
                   df[row, ] = mutacion
@@ -106,7 +106,7 @@ for (j in seq(1,num_secuencias,1)){
                   
                 }
               }else{
-                cat("Gen M no encontrado")
+                cat("Gen S no encontrado")
               }
             }
           }
@@ -282,7 +282,7 @@ for (j in seq(1,num_secuencias,1)){
               aminoChange = paste (translate(codonOri), numCodon, translate(codonFrance), sep="")
               genTipo = as.character( strsplit(genNombre[[2]],"]") )
               
-              if(genTipo == "M"){
+              if(genTipo == "S"){
                 if(!is.na(translate(codonFrance)) && length(translate(codonFrance))!=0){
                   mutacion = list(mutar, codonChange, aminoChange, genTipo)
                   df[row, ] = mutacion
@@ -290,7 +290,7 @@ for (j in seq(1,num_secuencias,1)){
                   
                 }
               }else{
-                cat("Gen M no encontrado")
+                cat("Gen S no encontrado")
               }
             }
           }
@@ -465,7 +465,7 @@ for (j in seq(1,num_secuencias,1)){
               aminoChange = paste (translate(codonOri), numCodon, translate(codonIndia), sep="")
               genTipo = as.character( strsplit(genNombre[[2]],"]") )
               
-              if (genTipo == "M"){
+              if (genTipo == "S"){
                 if(!is.na(translate(codonIndia)) && length(translate(codonIndia))!=0){
                   mutacion = list(mutar, codonChange, aminoChange, genTipo)
                   df[row, ] = mutacion
@@ -473,7 +473,7 @@ for (j in seq(1,num_secuencias,1)){
                   
                 }
               }else{
-                cat("Gen M no encontrado")
+                cat("Gen S no encontrado")
               }
             }
           }
@@ -648,8 +648,8 @@ for (j in seq(1,num_secuencias,1)){
               aminoChange = paste (translate(codonOri), numCodon, translate(codonSA), sep="")
               genTipo = as.character( strsplit(genNombre[[2]],"]") )
               
-              #Almacenamos en el data frame solo datos del gen M 
-              if (genTipo == "M"){
+              #Almacenamos en el data frame solo datos del gen S 
+              if (genTipo == "S"){
                 if(!is.na(translate(codonSA)) && length(translate(codonSA))!=0){ #Verificamos que no haya datos vacíos o                                                                                            faltantes
                   mutacion = list(mutar, codonChange, aminoChange, genTipo)
                   df[row, ] = mutacion
@@ -820,8 +820,8 @@ for (j in seq(1,num_secuencias,1)){
               aminoChange = paste (translate(codonOri), numCodon, translate(codonUSA), sep="")
               genTipo = as.character( strsplit(genNombre[[2]],"]") )
               
-              #Almacenamos en el data frame solo datos del gen M 
-              if (genTipo == "M"){
+              #Almacenamos en el data frame solo datos del gen S
+              if (genTipo == "S"){
                 if(!is.na(translate(codonUSA)) && length(translate(codonUSA))!=0){ #Verificamos que no haya datos vacíos o                                                                                            faltantes
                   mutacion = list(mutar, codonChange, aminoChange, genTipo)
                   df[row, ] = mutacion
